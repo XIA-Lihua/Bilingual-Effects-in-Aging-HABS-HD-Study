@@ -1,0 +1,948 @@
+---
+title: "HABS_HD_7_Analysis"
+output: html_document
+date: "2025-07-31"
+---
+
+# Is Bilingualism Protective against Late-life Cognitive decline? Differences in Ethnicity, Gender and Cognitive Domain in Cross-Sectional and Longitudinal Analyses
+
+```{r}
+### download required package
+library(readxl)
+library(readr)
+library(lme4)
+library(lmerTest) 
+library(sjstats)
+library(nlme)
+library(dplyr)
+library(plyr)
+library(pwr)
+library(olsrr)
+library(car)
+library(MatchIt)
+library(ggplot2)
+library(glmmTMB)
+library(tableone)
+library(sjPlot)
+library(aod)
+library(ggeffects) 
+library(effects)
+library(ggplot2)
+library(scales)
+library(effectsize) 
+library(GGally) 
+library(lavaan) 
+library(tableone)
+library(GGally)
+library(corrplot)
+library(pheatmap)
+library(ppcor)
+```
+We loaded required R packages (readxl, readr, lme4, lmerTest, sjstats, nlme, dplyr, plyr, pwr, olsrr, car, MatchIt, ggplot2, glmmTMB, tableone, sjPlot, aod, ggeffects, effects, ggplot2, scales, effectsize, GGally, lavaan, tableone, GGally, corrplot) to support data handling, modeling, and visualisation
+
+```{r}
+HABS_HD_cross_sectional<-read.csv("HABS_HD_7_Cross_Sectional_Analysis.csv")
+HABS_HD_cross_sectional$Ethnicity <- factor(HABS_HD_cross_sectional$Ethnicity, levels = c("Hispanic","White","Black")) # so referent is first, ie Hispanic)
+HABS_HD_cross_sectional$Bilingualism <- factor(HABS_HD_cross_sectional$Bilingualism, levels = c("Monolingual", "Bilingual"))
+HABS_HD_cross_sectional$Gender <- factor(HABS_HD_cross_sectional$Gender, levels = c(0, 1), labels = c("Male", "Female"))
+contrasts(HABS_HD_cross_sectional$Gender) = c(-1,1)  ### (male:-1; female: 1)
+contrasts(HABS_HD_cross_sectional$Bilingualism) = c(-1,1) ### (monolingual:-1; bilingual: 1)
+```
+We coded and/or standardised variables (Bilingualism, Ethnicity, Gender) to ensure consistent directionality and levels for analysis.
+
+## 1 Baseline (cross-sectional) analysis
+
+Descriptive data on bilinguals vs. monolinguals across ethnic groups
+```{r}
+# Define variables again
+vars <- c("Age", "Gender","EducationYears", "MMSE_Total","Ethnicity","CognitiveStatus")
+table1 <- CreateTableOne(vars = vars, 
+                        strata = c("Bilingualism" ), 
+                         data = HABS_HD_cross_sectional, 
+                         factorVars = c( "Gender","Interview_Language","Ethnicity","CognitiveStatus"),test= TRUE
+                         )
+#nonnormal_vars <- c("MMSE_Total")
+
+print(table1, showAllLevels = TRUE, formatOptions = list(big.mark = ","))
+```
+We summarised baseline characteristics using stratified descriptive tables (Table 1), focusing on group differences across key demographics and cognitive measures
+
+```{r}
+###Test the normality of data distribution
+shapiro.test(HABS_HD_cross_sectional$Age)
+shapiro.test(HABS_HD_cross_sectional$EducationYears )
+shapiro.test(HABS_HD_cross_sectional$MMSE_Total )
+```
+```{r}
+###Test the group differences among the background variables 
+kruskal.test(HABS_HD_cross_sectional$Age ~ HABS_HD_cross_sectional$Bilingualism)
+kruskal.test(HABS_HD_cross_sectional$EducationYears ~ HABS_HD_cross_sectional$Bilingualism)
+kruskal.test(HABS_HD_cross_sectional$MMSE_Total ~ HABS_HD_cross_sectional$Bilingualism)
+chisq.test(HABS_HD_cross_sectional$Gender,HABS_HD_cross_sectional$Bilingualism)
+chisq.test(HABS_HD_cross_sectional$Ethnicity,HABS_HD_cross_sectional$Bilingualism)
+```
+
+```{r}
+ggpairs(HABS_HD_cross_sectional, columns = c("Bilingualism", "Ethnicity", "Gender", "Age", "EducationYears"), inherit.aes = FALSE)
+```
+
+We visualised pairwise associations among bilingualism, ethnicity, gender, age, and education using a matrix of bivariate plots.
+
+### 1.1 Dementia Status as Outcome
+
+```{r}
+###Z-scores
+HABS_HD_cross_sectional$Age<- scale(HABS_HD_cross_sectional$Age,center = TRUE,scale = TRUE)
+HABS_HD_cross_sectional$EducationYears<- scale(HABS_HD_cross_sectional$EducationYears,center = TRUE,scale = TRUE)
+HABS_HD_cross_sectional <- filter(HABS_HD_cross_sectional, !is.na(CognitiveStatus)) ### Some participants cannot be labelled according to their criteria 
+HABS_HD_cross_sectional$PD <- ifelse(HABS_HD_cross_sectional$CognitiveStatus == "CU", 0, 1)
+
+model_cognitive <- glm(PD ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + Bilingualism * Ethnicity + EducationYears, data = HABS_HD_cross_sectional, family = binomial)
+car::Anova(model_cognitive)
+exp(cbind(OR = coef(model_cognitive), confint(model_cognitive)))
+effectsize(model_cognitive)
+eta_squared(model_cognitive) 
+```
+
+We fit a regression model with PD as the dependent variable. Predictors included Age, Bilingualism, Ethnicity, and Education; interaction terms captured moderation by age, gender, and ethnicity where specified. Overall effects were evaluated using type-II ANOVA (car::Anova), and effect sizes were computed to quantify the magnitude of associations.
+
+Interaction between Bilingualism and Ethnicity is significant, so break down by ethnicity
+
+```{r}
+## Analysis in Black
+model_B <- glm(PD ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='Black'), family = binomial)
+car::Anova(model_B)
+effectsize(model_B)  
+exp(cbind(OR = coef(model_B), confint(model_B)))
+eta_squared(model_B)
+``` 
+
+We fit a regression model with PD as the dependent variable in Black people. Predictors included Age, Bilingualism, and Education; interaction terms captured moderation by age and gender where specified.Results show that Black Bilinguals less likely to be CU!
+
+```{r}
+## Analysis in White
+model_W <- glm(PD ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='White'), family = binomial)
+car::Anova(model_W) 
+effectsize(model_W)
+exp(cbind(OR = coef(model_W), confint(model_W)))
+eta_squared(model_W)
+```
+
+No bilingualism effect in White
+
+```{r}
+## Analysis in Hispanic
+model_H <- glm(PD ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='Hispanic'), family = binomial)
+car::Anova(model_H) 
+effectsize(model_H)
+exp(cbind(OR = coef(model_H), confint(model_H)))
+eta_squared(model_H)
+```
+
+Hispanic Bilinguals MORE likely to be CU
+
+Function for plotting bar graphs
+```{r}
+fot.fun <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
+                      conf.interval=.95, .drop=TRUE, id=NULL) {
+  library(plyr)
+  # New version of length which can handle NA's: if na.rm==T, don't count them
+  length2 <- function (x, na.rm=FALSE) {
+    if (na.rm) sum(!is.na(x))
+    else       length(x)}
+  # This does the effectsize. For each group's data frame, return a vector with
+  # N, mean, and sd
+  if(is.null(id)){
+    datac <- ddply(data, groupvars, .drop=.drop,
+                   .fun = function(xx, col) {
+                     c(N    = length2(xx[[col]], na.rm=na.rm),
+                       mean = mean   (xx[[col]], na.rm=na.rm),
+                       median = median (xx[[col]], na.rm=na.rm),
+                       sum = sum (xx[[col]], na.rm=na.rm),
+                       sd   = sd     (xx[[col]], na.rm=na.rm)  )},
+                   measurevar  ) }
+  else {
+    datac <- ddply(data, groupvars, .drop=.drop,
+                   .fun = function(xx, col) {
+                     c(id = id,
+                       N    = length2(xx[[col]], na.rm=na.rm),
+                       mean = mean   (xx[[col]], na.rm=na.rm),
+                       median = median (xx[[col]], na.rm=na.rm),
+                       sum = sum (xx[[col]], na.rm=na.rm),
+                       sd   = sd     (xx[[col]], na.rm=na.rm)
+                     ) }, measurevar  )
+    datac<-datac[,c(3,1,2,4,5,6,7,8)]  }
+  # Rename the "mean" column    
+  datac <- reshape:::rename(datac, c("mean" = measurevar))
+  
+  datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
+  
+  # Confidence interval multiplier for standard error
+  # Calculate t-statistic for confidence interval: 
+  # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+  ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+  datac$ci <- datac$se * ciMult
+  return(datac)
+}
+```
+
+```{r}
+## Plot the probability of being PD across groups
+HABS_HD_cross_sectional$PD <- ifelse(HABS_HD_cross_sectional$CognitiveStatus == "CI", 1, 0)
+
+plot_data  <- fot.fun(data=HABS_HD_cross_sectional, "PD", c("Bilingualism","Ethnicity"))
+
+plot_data <- subset(plot_data, PD >= 0 & PD <= 1)
+
+p1<-ggplot(plot_data, aes(x = Bilingualism, y = PD, fill = Bilingualism)) +
+  geom_col(position = position_dodge(0.9), width = 0.7) +
+  geom_errorbar(aes(ymin = PD - se, ymax = PD + se),
+                width = 0.2,
+                position = position_dodge(0.9)) +
+  facet_wrap(~Ethnicity) +
+  ylab("Probability of PD") +
+  xlab("Ethnicity") +
+  ggtitle("Probability of Potential Dementia (PD) by Bilingualism across Ethic Groups") +
+  scale_fill_brewer(palette = "Set1") +
+  theme_bw() +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) + 
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, family = "serif"),
+    legend.title = element_blank(),
+    legend.position = "top",
+    axis.title.x = element_text(size = 14, family = "serif"),
+    axis.title.y = element_text(size = 14, family = "serif"),
+    axis.text.x = element_text(size = 13, family = "serif"),  
+    axis.text.y = element_text(size = 13, family = "serif"),
+    strip.text = element_text(size = 14, family = "serif"))
+
+ggsave("Probability_of_PD.png", plot = p1, 
+       width = 8, height = 6, units = "in", 
+       dpi = 800) 
+```
+
+
+### 1.2 Cognitive Abilities as Outcome
+
+### 1.2.1 EFA for cognitive measures 
+
+```{r}
+# Reverse Trails A and B so higher = better
+HABS_HD_cross_sectional$Trails_A_Reversed <- -scale(HABS_HD_cross_sectional$Trails_A_Time)
+HABS_HD_cross_sectional$Trails_B_Reversed <- -scale(HABS_HD_cross_sectional$Trails_B_Time)
+### Select the target cognitive measures  
+HABS_data_z = subset(HABS_HD_cross_sectional, select=c('Trails_A_Reversed', 'Trails_B_Reversed', 'Digit_Symbol_Substitution', 'DSF_Total', 'DSB_Total', 'LM1_AB_Total', 'LM2_AB_Total', 'SEVLT_T1235_Total', 'SEVLT_DR_Total', 'FAS_Total', 'Animal_Total','Med_ID','Visit_ID'))
+HABS_data_z$Med_ID<-as.factor(HABS_data_z$Med_ID)
+HABS_data_z$Visit_ID<-as.factor(HABS_data_z$Visit_ID)
+HABS_data_z <- HABS_data_z  # make a copy
+HABS_data_z[sapply(HABS_data_z, is.numeric)] <- scale(HABS_data_z[sapply(HABS_data_z, is.numeric)])
+## create a z-scored dataset for cognitive measures
+efa_data = subset(HABS_data_z, select=c('Trails_A_Reversed', 'Trails_B_Reversed', 'Digit_Symbol_Substitution', 'DSF_Total', 'DSB_Total', 'LM1_AB_Total', 'LM2_AB_Total', 'SEVLT_T1235_Total', 'SEVLT_DR_Total', 'FAS_Total', 'Animal_Total')) 
+```
+
+```{r}
+psych::fa.parallel(efa_data,, fa = "pc")
+#### Parallel analysis suggests that the number of components =  3 
+
+# Run PCA
+pca_result <- psych::principal(efa_data, nfactors = 3, rotate = "oblimin")
+# View results
+print(pca_result, digits = 2, cutoff = 0.3)
+pca_result$Vaccounted
+```
+
+```{r}
+three_factor_efa_fit = efa(data = efa_data, nfactors=3, missing="fiml", rotation = "oblimin")
+summary(three_factor_efa_fit, fit.measures = TRUE, standardized = TRUE)
+predicted_scores <- lavPredict(three_factor_efa_fit)
+predicted_scores <- as.data.frame(predicted_scores)
+colnames(predicted_scores) <- c("Executive_Function", "Working_Memory", "Episodic_Memory")
+HABS_HD_cross_sectional <- cbind(HABS_HD_cross_sectional, predicted_scores)
+```
+
+We conducted exploratory factor analysis with 3 factors to identify the latent structure of the cognitive battery and to guide confirmatory modelling
+
+### 1.2.2 Analysis on Cognitive Performance: Executive_Function domain 
+```{r}
+HABS_HD_cross_sectional$Ethnicity<-relevel(HABS_HD_cross_sectional$Ethnicity, ref="Hispanic")
+a1<-lm(Executive_Function ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + Bilingualism * Ethnicity + EducationYears, data = HABS_HD_cross_sectional)
+car::Anova(a1)
+summary(a1)
+effectsize(a1)
+eta_squared(a1)
+```
+
+We fit a regression model with Executive_Function as the dependent variable.Predictors included Age, Bilingualism, Ethnicity and Education; interaction terms captured moderation by age, gender, and ethnicity where specified.The results indicate significant interactions between Bilingualism and Gender, and Bilingualism and Ethnicity. 
+
+Interaction between Bilingualism and Ethnicity is significant, so break down by ethnicity
+
+```{r}
+##analysis in Black
+model_B <- lm(Executive_Function ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='Black'))
+car::Anova(model_B) 
+summary(model_B)
+effectsize(model_B)
+eta_squared(model_B)
+```
+
+The main effect of bilingualism is not significant in Black
+
+```{r}
+###analysis in Hispanic
+model_H <- lm(Executive_Function ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='Hispanic'))
+car::Anova(model_H) 
+effectsize(model_H)
+eta_squared(model_H)
+```
+
+Bilingual Hispanics outperformed monolingual Hispanics
+
+```{r}
+### analysis in White
+model_W <- lm(Executive_Function ~ Bilingualism * poly(Age,2) + Bilingualism * Gender +  EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='White'))
+car::Anova(model_W)  
+effectsize(model_W)
+eta_squared(model_W)
+```
+
+The main effect of bilingualism is not significant but the interaction Bilingualism: Gender is significant. So we breakdown the interaction within White people
+
+```{r}
+### analysis in White females
+model_WF <- lm(Executive_Function ~ Bilingualism * poly(Age,2)  +  EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='White'& Gender =="Female"))
+car::Anova(model_WF) 
+effectsize(model_WF)
+eta_squared(model_WF)
+```
+
+No bilingual effect in white females
+
+```{r}
+### analysis in White males
+model_WM <- lm(Executive_Function ~ Bilingualism * poly(Age,2)  +  EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='White'& Gender =="Male"))
+car::Anova(model_WM)  
+effectsize(model_WM)
+eta_squared(model_WM)
+```
+
+NO bilingual effect in White males
+
+Interaction between Bilingualism and Gender is significant, so break down by Gender 
+```{r}
+###Analysis in Female
+model_F <- lm(Executive_Function ~ Bilingualism * poly(Age,2) + Bilingualism * Ethnicity +  EducationYears, data = subset(HABS_HD_cross_sectional, Gender=='Female'))
+car::Anova(model_F)
+effectsize(model_F)
+eta_squared(model_F)
+```
+
+The main effect of bilingualism and its interaction with Ethnicity are significant. So, breakdown the interaction by ethnicity within females
+
+```{r}
+### Analysis in Black females
+model_B <- lm(Executive_Function ~ Bilingualism * poly(Age,2) +  EducationYears, data = subset(HABS_HD_cross_sectional,  Gender=='Female' & Ethnicity=='Black'))
+car::Anova(model_B)  
+effectsize(model_B)
+eta_squared(model_B)
+```
+
+Bilingual disadvantage in Black females!
+
+```{r}
+### Analysis in Hispanic females
+model_H <- lm(Executive_Function ~ Bilingualism * poly(Age,2) +  EducationYears, data = subset(HABS_HD_cross_sectional, Gender=='Female' &  Ethnicity=='Hispanic'))
+car::Anova(model_H) 
+effectsize(model_H)
+eta_squared(model_H)
+```
+
+Bilingual advantage in Hispanic females.
+
+```{r}
+### Analysis in White females
+model_W <- lm(Executive_Function ~ Bilingualism * poly(Age,2) +  EducationYears, data = subset(HABS_HD_cross_sectional, Gender=='Female' &  Ethnicity=='White'))
+car::Anova(model_W)  
+effectsize(model_W)
+eta_squared(model_W)
+```
+
+The main effect of bilingualism is not significant 
+
+```{r}
+### Analysis in males
+model_M <- lm(Executive_Function ~ Bilingualism * poly(Age,2) + Bilingualism * Ethnicity +  EducationYears, data = subset(HABS_HD_cross_sectional, Gender=='Male'))
+car::Anova(model_M)  
+effectsize(model_M)
+eta_squared(model_M)
+```
+
+The main effect of bilingualism is significant, indicating a general bilingual advantage in males.
+
+```{r}
+plot_data  <- fot.fun(data=HABS_HD_cross_sectional, "Executive_Function", c("Bilingualism","Ethnicity","Gender"))
+p2<-ggplot(plot_data, aes(x = Ethnicity, y = Executive_Function, fill = Bilingualism)) +
+  geom_col(position = position_dodge(0.9), width = 0.7) +
+  geom_errorbar(aes(ymin = Executive_Function - se, ymax = Executive_Function + se),
+                width = 0.2,
+                position = position_dodge(0.9)) +
+  facet_wrap(~Gender) +
+  ylab("Executive Function") +
+  xlab("Ethnicity") +
+  ggtitle("Executive Function by Bilingualism Across Ethnic and Gender Groups") +
+  scale_fill_brewer(palette = "Set1") +
+  theme_bw() +
+  #scale_y_continuous(labels = percent_format(accuracy = 1)) + 
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, family = "serif"),
+    legend.title = element_blank(),
+    legend.position = "top",
+    axis.title.x = element_text(size = 14, family = "serif"),
+    axis.title.y = element_text(size = 14, family = "serif"),
+    axis.text.x = element_text(size = 13, family = "serif"),  
+    axis.text.y = element_text(size = 13, family = "serif"),
+    strip.text = element_text(size = 14, family = "serif")
+  )
+ggsave("Executive_Function.png", plot = p2, 
+       width = 8, height = 6, units = "in", 
+       dpi = 800) 
+```
+
+For Executive Function: A multiple linear regression model was fitted to examine the relationship between bilingualism and executive function, controlling for age (modeled as a second-degree polynomial), gender, ethnicity, and education. Significant interactions were found between bilingualism and gender and between bilingualism and ethnicity. Further analyses showed a bilingual advantage among Hispanic females and males overall, while Black females exhibited a bilingual disadvantage; no significant effects were found among White participants.
+
+### 1.2.3 Analysis on Cognitive Performance: Working memory 
+```{r}
+HABS_HD_cross_sectional$Ethnicity<-relevel(HABS_HD_cross_sectional$Ethnicity, ref="White")
+a2 <- lm(Working_Memory ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + Bilingualism * Ethnicity + EducationYears, data = HABS_HD_cross_sectional)  
+summary(a2)
+car::Anova(a2) 
+effectsize(a2)
+eta_squared(a2)
+```
+
+The main effect of Ethnicity is significant: Black and White outperformed Hispanic people.
+
+### 1.2.4 Analysis on Cognitive Performance: Episodic Memory
+```{r}
+HABS_HD_cross_sectional$Ethnicity<-relevel(HABS_HD_cross_sectional$Ethnicity, ref="Black")
+a3 <- lm(Episodic_Memory ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + Bilingualism * Ethnicity + EducationYears, data = HABS_HD_cross_sectional)  
+car::Anova(a3)  
+effectsize(a3)
+eta_squared(a3)
+```
+
+We fit a regression model with Episodic_Memory as the dependent variable.Predictors included Age, Bilingualism, Ethnicity and Education; interaction terms captured moderation by age, gender, and ethnicity where specified.The results indicate significant interactions between Bilingualism and Gender, and Bilingualism and Ethnicity. 
+
+Interaction between Bilingualism and Ethnicity is significant, so break down by ethnicity
+
+```{r}
+###Analysis in Black
+model_B <- lm(Episodic_Memory ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='Black'))
+car::Anova(model_B)  
+effectsize(model_B)
+eta_squared(model_B)
+```
+
+Bilingual disadvantage in Black people!
+
+```{r}
+### Analysis in Hispanic
+model_H <- lm(Episodic_Memory ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='Hispanic'))
+car::Anova(model_H)
+effectsize(model_H)
+eta_squared(model_H)
+```
+
+Bilingual advantage in Hispanic people!
+
+```{r}
+model_W <- lm(Episodic_Memory ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='White'))
+car::Anova(model_W) 
+effectsize(model_W)
+eta_squared(model_W)
+```
+
+No bilingual effect in White people.
+
+Interaction between Bilingualism and Gender is significant, so break down by gender
+
+```{r}
+###Analysis in Females
+model_F <- lm(Episodic_Memory ~ Bilingualism * poly(Age,2) + Bilingualism * Ethnicity + EducationYears, data = subset(HABS_HD_cross_sectional, Gender=='Female'))
+car::Anova(model_F)  
+effectsize(model_F)
+eta_squared(model_F)
+```
+
+Interaction between Bilingualism and Ethnicity is significant in females, so breakdown the interaction
+
+```{r}
+### Analysis in Hispanic females
+model_FH <- lm(Episodic_Memory ~ Bilingualism * poly(Age,2) + EducationYears, data = subset(HABS_HD_cross_sectional, Gender == "Female" & Ethnicity=='Hispanic'))
+car::Anova(model_FH)
+effectsize(model_H)
+eta_squared(model_H)
+```
+
+Bilingual advantage in Hispanic females
+
+```{r}
+### Analysis in Black females
+model_FB <- lm(Episodic_Memory ~ Bilingualism * poly(Age,2) + EducationYears, data = subset(HABS_HD_cross_sectional, Gender == "Female" & Ethnicity=='Black'))
+car::Anova(model_FB)
+effectsize(model_FB)
+eta_squared(model_FB)
+```
+
+No bilingual effect in Black females
+
+```{r}
+### Analysis in White females
+model_FW <- lm(Episodic_Memory ~ Bilingualism * poly(Age,2) + EducationYears, data = subset(HABS_HD_cross_sectional, Gender == "Female" & Ethnicity=='White'))
+car::Anova(model_FW)
+effectsize(model_FW)
+eta_squared(model_FW)
+```
+
+No bilingual effect in White females
+
+```{r}
+###Analysis in Males
+model_M <- lm(Episodic_Memory ~ Bilingualism * poly(Age,2) + Bilingualism * Ethnicity + EducationYears, data = subset(HABS_HD_cross_sectional, Gender=='Male'))
+car::Anova(model_M)
+effectsize(model_M)
+eta_squared(model_M)
+```
+
+No bilingual effect in males
+
+```{r}
+plot_data  <- fot.fun(data=HABS_HD_cross_sectional, "Episodic_Memory", c("Bilingualism","Ethnicity","Gender"))
+p3<-ggplot(plot_data, aes(x = Ethnicity, y = Episodic_Memory, fill = Bilingualism)) +
+  geom_col(position = position_dodge(0.9), width = 0.7) +
+  geom_errorbar(aes(ymin = Episodic_Memory - se, ymax = Episodic_Memory + se),
+                width = 0.2,
+                position = position_dodge(0.9)) +
+  facet_wrap(~Gender) +
+  ylab("Episodic Memory") +
+  xlab("Ethnicity") +
+  ggtitle("Episodic Memory by Bilingualism Across Ethnic and Gender Groups") +
+  scale_fill_brewer(palette = "Set1") +
+  theme_bw() +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) + 
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, family = "serif"),
+    legend.title = element_blank(),
+    legend.position = "top",
+    axis.title.x = element_text(size = 14, family = "serif"),
+    axis.title.y = element_text(size = 14, family = "serif"),
+    axis.text.x = element_text(size = 13, family = "serif"),  
+    axis.text.y = element_text(size = 13, family = "serif"),
+    strip.text = element_text(size = 14, family = "serif")
+  )
+ggsave("Episodic_Memory.png", plot = p3, 
+       width = 8, height = 6, units = "in", 
+       dpi = 800) 
+```
+
+For Episodic memory:A significant interaction between bilingualism and ethnicity indicated a bilingual advantage among Hispanic participants, particularly Hispanic females, and a bilingual disadvantage among Black participants overall. Further gender-stratified analyses confirmed that the bilingual advantage in episodic memory was specific to Hispanic females, with no significant effects observed in Black or White females, or in males of any ethnicity. 
+
+## 1.3 Language domain
+
+## 1.3.1 Language domain: English
+
+To examine whether bilingualism is associated with a disadvantage in the first language (L1), we compared English performance between English monolinguals and bilinguals who identified English as their primary language. 
+
+```{r}
+HABS_HD_cross_sectional_English <- subset(HABS_HD_cross_sectional, AMNART_Er !=" ")
+###Z-scores, and invert to bigger better
+HABS_HD_cross_sectional_English$AMNART <- -scale(HABS_HD_cross_sectional_English$AMNART_Er, center = TRUE, scale = TRUE)
+HABS_HD_cross_sectional_English <- HABS_HD_cross_sectional_English %>% filter(Bilingualism2 %in% c("ME", "BE"))
+HABS_HD_cross_sectional_English$Bilingualism2 <- factor(HABS_HD_cross_sectional_English$Bilingualism2, levels = c("ME", "BE"))
+contrasts(HABS_HD_cross_sectional_English$Bilingualism2) = c(-1,1)  ### (ME:-1; BE: 1)
+```
+
+```{r}
+HABS_HD_cross_sectional_English$Ethnicity<-relevel(HABS_HD_cross_sectional_English$Ethnicity, ref="White")
+model_English <- lm(AMNART ~ Bilingualism2 * poly(Age,2) + Bilingualism2 * Gender + Bilingualism2 * Ethnicity + EducationYears, data = HABS_HD_cross_sectional_English)
+car::Anova(model_English)
+effectsize(model_English)
+eta_squared(model_English)
+```
+
+Interaction between Bilingualism and Ethnicity is significant, so break down by ethnicity 
+
+```{r}
+##Analysis in Black people
+model_B <- lm(AMNART ~ Bilingualism2 * poly(Age,2) + Bilingualism2 * Gender + EducationYears, data = subset(HABS_HD_cross_sectional_English, Ethnicity=='Black'))
+car::Anova(model_B)
+effectsize(model_B)
+eta_squared(model_B)
+```
+
+The main effect of bilingualism is not significant in Black
+
+```{r}
+model_H <- lm(AMNART ~ Bilingualism2 * poly(Age,2) + Bilingualism2 * Gender + EducationYears, data = subset(HABS_HD_cross_sectional_English, Ethnicity=='Hispanic'))
+car::Anova(model_H)
+effectsize(model_H)
+eta_squared(model_H)
+```
+Hispanic bilingual-English are worse (have more errors) than Hispanic monolingual-English
+
+```{r}
+model_W <- lm(AMNART ~ Bilingualism2 * poly(Age,2) + Bilingualism2 * Gender + EducationYears, data = subset(HABS_HD_cross_sectional_English, Ethnicity=='White'))
+car::Anova(model_W)
+effectsize(model_W)
+eta_squared(model_W)
+```
+
+White bilingual-English are better than White monolingual-English
+
+```{r}
+plot_data  <- fot.fun(HABS_HD_cross_sectional_English, "AMNART", c("Bilingualism2","Ethnicity"))
+
+ggplot(plot_data, aes(x = Bilingualism2, y = AMNART, fill = Bilingualism2)) +
+  geom_col(position = position_dodge(0.9), width = 0.7) +
+  geom_errorbar(aes(ymin = AMNART - se, ymax = AMNART + se),
+                width = 0.2,
+                position = position_dodge(0.9)) +
+  facet_wrap(~Ethnicity) +
+  ylab("AMNART performance (Z-scored)") +
+  xlab("Bilingualism") +
+  ggtitle("English Performance by Bilingualism Across Ethnic Groups") +
+  scale_fill_brewer(palette = "Set2") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, family = "serif"),
+    legend.title = element_blank(),
+    legend.position = "top",
+    axis.title.x = element_text(size = 14, family = "serif"),
+    axis.title.y = element_text(size = 14, family = "serif"),
+    axis.text.x = element_text(size = 13, family = "serif"),  
+    axis.text.y = element_text(size = 13, family = "serif"),
+    strip.text = element_text(size = 14, family = "serif")  
+  )
+```
+
+For English, we found a bilingual disadvantage in Hispanic participants, a bilingual advantage in White participants and no bilingual effect in Black participants. 
+
+## 1.3.2 Language domain: Spanish
+```{r}
+HABS_HD_WAT<-read.csv("HABS_HD_7_WAT.csv")
+###Only Hispanic people have the WAT scores, hence there is no Bilingualism: Ethnicity in the model
+HABS_HD_WAT$Gender <- factor(HABS_HD_WAT$Gender,levels = c(0, 1),labels = c("Male", "Female"))
+HABS_HD_WAT$Bilingualism2 <- factor(HABS_HD_WAT$Bilingualism2,levels =  c("MS", "BS"))
+HABS_HD_WAT$WAT<- scale(HABS_HD_WAT$WAT,center = TRUE, scale = TRUE)
+###Number for each group
+table(HABS_HD_WAT$Bilingualism2, HABS_HD_WAT$Gender)
+```
+
+```{r}
+##Analysis based on Monolingual with Spanish as primary language (MS) vs. Bilinguals with Spanish as L1 (BS)
+model_spanish<-lm(WAT ~  Bilingualism2 * poly(Age,2) + Bilingualism2 * Gender + EducationYears, HABS_HD_WAT)
+car::Anova(model_spanish) 
+effectsize(model_spanish)
+eta_squared(model_spanish)
+```
+
+Bilingualism related effects are not significant
+
+#### 2 Longitudinal analysis
+```{r}
+HABS_HD_longitudinal<-read.csv("HABS_HD_7_Longitudinal_Analysis.csv")
+HABS_HD_longitudinal$Ethnicity <- factor(HABS_HD_longitudinal$Ethnicity, levels = c("Hispanic","White","Black")) # so referent is first, ie Hispanic
+HABS_HD_longitudinal$Bilingualism <- factor(HABS_HD_longitudinal$Bilingualism, levels = c("Monolingual", "Bilingual"))
+HABS_HD_longitudinal$Gender <- factor(HABS_HD_longitudinal$Gender, levels = c(0, 1), labels = c("Male", "Female"))
+
+contrasts(HABS_HD_longitudinal$Gender) = c(-1,1)  ### (male:-1; female: 1)
+contrasts(HABS_HD_longitudinal$Bilingualism) = c(-1,1) ### (monolingual:-1; bilingual: 1)
+
+###Z-scores
+HABS_HD_longitudinal$A0<- scale(HABS_HD_longitudinal$A0,center = TRUE,scale = TRUE)
+HABS_HD_longitudinal$EducationYears<- scale(HABS_HD_longitudinal$EducationYears,center = TRUE,scale = TRUE)
+table(HABS_HD_longitudinal$Bilingualism,HABS_HD_longitudinal$Max_Visit_ID) 
+```
+
+Note: 2 Black people have 3 visits and NO black people have 4 visits
+
+```{r}
+### Participants' demographic information
+# Keep only one row per participant (assuming "Visit_ID" is the participant ID)
+unique_participants <- subset(HABS_HD_longitudinal, Visit_ID =="1")
+
+unique_participants$EducationYears<-as.numeric(unique_participants$EducationYears)
+# Variables for the table
+vars <- c("A0","Gender",  "EducationYears", "MMSE_Total","Max_Visit_ID",
+          "Ethnicity","Group")
+
+# Create TableOne stratified by Bilingualism
+table1 <- CreateTableOne(vars = vars, 
+                         strata = "Bilingualism", 
+                         data = unique_participants, 
+                         factorVars = c("Gender","Ethnicity","Group","Max_Visit_ID"),
+                         test = TRUE)
+
+# Print table
+print(table1, showAllLevels = TRUE, formatOptions = list(big.mark = ","))
+```
+```{r}
+###check the normality of distribution
+shapiro.test(unique_participants$Age)
+shapiro.test(unique_participants$EducationYears )
+shapiro.test(unique_participants$MMSE_Total )
+```
+```{r}
+##Test group differences
+kruskal.test(unique_participants$Age ~ unique_participants$Bilingualism)
+kruskal.test(unique_participants$EducationYears ~ unique_participants$Bilingualism)
+kruskal.test(unique_participants$MMSE_Total ~ unique_participants$Bilingualism)
+chisq.test(unique_participants$Gender,unique_participants$Bilingualism)
+chisq.test(unique_participants$Ethnicity,unique_participants$Bilingualism)
+chisq.test(unique_participants$Max_Visit_ID,unique_participants$Bilingualism)
+```
+
+### 2.1 Cognitive Stability in Initially Cognitively Unimpaired Participants
+
+In the longitudinal analysis, only participants who were cognitively unimpaired (CU) at their first visit were included. Therefore, the proportion of individuals classified as 'Stable CU' reflects those who remained cognitively unimpaired across subsequent visits, conditional on being CU at baseline.
+Note: The number of CU/CI for clinical diagnosis is small in longitudinal analysis, hence, it is not analysed here
+
+```{r}
+# Get Med_IDs whose Visit_ID == 1 and CognitiveStatus == "CU"
+CU_ids <- HABS_HD_longitudinal %>%
+  filter(Visit_ID == 1, CognitiveStatus == "CU") %>%
+  pull(Med_ID) %>%
+  unique()
+
+# Subset the full data based on those IDs
+HABS_HD_longitudinal_CU <- HABS_HD_longitudinal %>%
+  filter(Med_ID %in% CU_ids)
+
+##PD coded as 1
+HABS_HD_longitudinal_CU$PD<- ifelse(HABS_HD_longitudinal_CU$Group == "Stable CU", 0, 1)
+
+HABS_HD_longitudinal_CU <- subset(HABS_HD_longitudinal_CU, Ethnicity !='Black') 
+HABS_HD_longitudinal_CU<-droplevels(HABS_HD_longitudinal_CU)
+
+contrasts(HABS_HD_longitudinal_CU$Gender) = c(-1,1)  ### (male:-1; female: 1)
+contrasts(HABS_HD_longitudinal_CU$Bilingualism) = c(-1,1) ### (monolingual:-1; bilingual: 1)
+contrasts(HABS_HD_longitudinal_CU$Ethnicity) = c(-1,1) ### (white:-1; Hispanic: 1)
+```
+
+```{r}
+model_stable <- glm(PD ~ Bilingualism * (poly(Age,2) + Gender + Ethnicity) + EducationYears, data = HABS_HD_longitudinal_CU, family = binomial)
+car::Anova(model_stable)
+exp(cbind(OR = coef(model_stable), confint(model_stable)))
+effectsize(model_stable)
+eta_squared(model_stable) 
+```
+
+We fit a regression model with StableCU as the dependent variable. Predictors included A0, Bilingualism; interaction terms captured moderation by age, gender, and ethnicity where specified.
+
+Bilingualism:Gender interaction is significant, so breakdown by Gender.
+
+```{r}
+###Analysis in females
+model_F <- glm(PD ~ Bilingualism * (poly(A0, 2) + Ethnicity) + EducationYears,  data = subset(HABS_HD_longitudinal_CU, Gender=='Female'), family = binomial)
+car::Anova(model_F)
+exp(cbind(OR = coef(model_F), confint(model_F)))
+effectsize(model_F)
+eta_squared(model_F)
+```
+
+The interaction between Bilingualism and Ethnicity is significant, analysis in White females was conducted
+
+```{r}
+model_FW <- glm(PD ~ Bilingualism * poly(A0, 2)  + EducationYears,  data = subset(HABS_HD_longitudinal_CU, Gender=='Female'& Ethnicity=='White'), family = binomial)
+car::Anova(model_FW)
+exp(cbind(OR = coef(model_FW), confint(model_FW)))
+effectsize(model_FW)
+eta_squared(model_FW)
+```
+
+White Females LESS likely to be Stable CU
+
+```{r}
+model_FH <- glm(PD ~ Bilingualism * poly(A0, 2)  + EducationYears,  data = subset(HABS_HD_longitudinal_CU, Gender=='Female'& Ethnicity=='Hispanic'), family = binomial)
+car::Anova(model_FH)
+effectsize(model_FH)
+eta_squared(model_FH)
+```
+
+No effect in Hispanic females
+
+```{r}
+###Analysis in males
+model_M <- glm(PD ~ Bilingualism * (poly(A0, 2) +Ethnicity) + EducationYears,  data = subset(HABS_HD_longitudinal_CU, Gender=='Male'), family = binomial)
+car::Anova(model_M)
+effectsize(model_M)
+eta_squared(model_M)
+```
+
+The interaction between Bilingualism and Ethnicity is significant, so breakdown within males
+
+```{r}
+model_MW <- glm(PD ~ Bilingualism * poly(A0, 2) + EducationYears,  data = subset(HABS_HD_longitudinal_CU, Gender=='Male' & Ethnicity=='White'), family = binomial)
+
+car::Anova(model_MW)
+exp(cbind(OR = coef(model_MW), confint(model_MW)))
+effectsize(model_MW)
+eta_squared(model_MW)
+```
+
+The model returns a warning, because there are only 2 bilingual males with CI.
+
+```{r}
+model_MH <- glm(PD ~ Bilingualism * poly(A0, 2) + EducationYears,  data = subset(HABS_HD_longitudinal_CU, Gender=='Male' & Ethnicity=='Hispanic'), family = binomial)
+car::Anova(model_MH)
+effectsize(model_MH)
+eta_squared(model_MH)
+```
+
+No bilingual effect in Hispanic males
+
+## Plot the probability of conversion to PD acorss visits
+```{r}
+plot_data  <- fot.fun(data=HABS_HD_longitudinal_CU, "PD", c("Bilingualism","Ethnicity","Gender"))
+
+plot_data$count <-  c(39, 71, 100, 66,         # Manually added raw numbers
+            96, 125, 2, 18)
+
+# Plot
+p4<-ggplot(plot_data, aes(x = Gender, y = PD, fill = Bilingualism)) +
+  geom_col(position = position_dodge(0.9), width = 0.7) +
+  geom_errorbar(aes(ymin = PD - se, ymax = PD + se),
+                width = 0.2,
+                position = position_dodge(0.9)) +
+  geom_text(aes(y = PD + se + 0.02,  # move slightly above the error bar
+              label = count),
+          position = position_dodge(0.9),
+          size = 4,
+          family = "serif")+
+  facet_wrap(~Ethnicity) +
+  ylab("PD Converstion Propotion (%)") +
+  xlab("Gender") +
+  ggtitle("Probability of Conversion to Dementia by Bilingualism Across Ethnic Groups") +
+  scale_fill_brewer(palette = "Set1") +
+  theme_bw() +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) + 
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, family = "serif"),
+    legend.title = element_blank(),
+    legend.position = "top",
+    axis.title.x = element_text(size = 14, family = "serif"),
+    axis.title.y = element_text(size = 14, family = "serif"),
+    axis.text.x = element_text(size = 13, family = "serif"),  
+    axis.text.y = element_text(size = 13, family = "serif"),
+    strip.text = element_text(size = 14, family = "serif")  
+  )
+ggsave("Probability_of_PD_Conversion.png", plot = p4, 
+       width = 8, height = 6, units = "in", 
+       dpi = 800) 
+```
+
+Regression analysis predicting longitudinal cognitive stability (StableCU) revealed a significant interaction between bilingualism and gender. Among females, a further Bilingualism × Ethnicity interaction showed that White bilingual females were less likely to remain cognitively unimpaired, while no effect was observed in Hispanic females. Among males, the interaction between bilingualism and ethnicity was also significant, but results for White males were inconclusive due to sparse data. No significant bilingual effect was found in Hispanic males.
+
+### 2.2 Cognitive Abilities as Outcome
+
+### 2.2.1 EFA for cognitive measures 
+
+```{r}
+# Reverse Trails A and B so higher = better
+HABS_HD_longitudinal$Trails_A_Reversed <- -scale(HABS_HD_longitudinal$Trails_A_Time)
+HABS_HD_longitudinal$Trails_B_Reversed <- -scale(HABS_HD_longitudinal$Trails_B_Time)
+
+### Select the target cognitive measures  
+HABS_data_z2 = subset(HABS_HD_longitudinal, select=c('Trails_A_Reversed', 'Trails_B_Reversed', 'Digit_Symbol_Substitution', 'DSF_Total', 'DSB_Total', 'LM1_AB_Total', 'LM2_AB_Total', 'SEVLT_T1235_Total', 'SEVLT_DR_Total', 'FAS_Total', 'Animal_Total','Med_ID','Visit_ID'))
+HABS_data_z2$Med_ID<-as.factor(HABS_data_z2$Med_ID)
+HABS_data_z2$Visit_ID<-as.factor(HABS_data_z2$Visit_ID)
+HABS_data_z2 <- HABS_data_z2  # make a copy
+HABS_data_z2[sapply(HABS_data_z2, is.numeric)] <- scale(HABS_data_z2[sapply(HABS_data_z2, is.numeric)])
+
+## create a z-scored dataset for cognitive measures
+efa_data2 = subset(HABS_data_z2, select=c('Trails_A_Reversed', 'Trails_B_Reversed', 'Digit_Symbol_Substitution', 'DSF_Total', 'DSB_Total', 'LM1_AB_Total', 'LM2_AB_Total', 'SEVLT_T1235_Total', 'SEVLT_DR_Total', 'FAS_Total', 'Animal_Total')) 
+```
+
+```{r}
+# Run PCA
+pca_result <- psych::principal(efa_data2, nfactors = 3, rotate = "oblimin")
+# View results
+print(pca_result, digits = 2, cutoff = 0.3)
+pca_result$Vaccounted
+```
+
+```{r}
+three_factor_efa_fit2 = lavaan::efa(data =efa_data2, nfactors=3, rotation='oblimin', missing="fiml")
+summary(three_factor_efa_fit2, fit.measures = TRUE, standardized = TRUE)
+
+predicted_scores2 <- lavPredict(three_factor_efa_fit2)
+predicted_scores2 <- as.data.frame(predicted_scores2)
+colnames(predicted_scores2) <- c("Executive_Function", "Working_Memory", "Episodic_Memory")
+
+HABS_HD_longitudinal <- cbind(HABS_HD_longitudinal, predicted_scores2)
+```
+
+### 2.2.2 Analysis on Cognitive Performance: Executive_Function domain 
+```{r}
+a1<-lmer(Executive_Function ~  A0 * dA * Bilingualism + dA * Bilingualism * Gender + dA * Bilingualism * Ethnicity + EducationYears + Practice + (1|Med_ID), data = HABS_HD_longitudinal)
+car::Anova(a1)
+effectsize(a1)
+eta_squared(a1)
+```
+
+We fit a mixed-effects model with Executive_Function as the outcome, including participant-level random intercepts to account for repeated measurements.Baseline age (A0) and time since baseline (dA) were modelled as fixed effects, with interactions testing whether longitudinal change differed by bilingual status and demographic factors, Practice effect is also controlled in the model. Inference was based on Wald chi-square tests (car::Anova) with follow-up contrasts where relevant.
+
+### 2.2.2 Analysis on Cognitive Performance: Short-term Memory (STM)
+```{r}
+a2<-lmer(Working_Memory ~  A0 * dA * Bilingualism + dA * Bilingualism * Gender + dA * Bilingualism * Ethnicity + EducationYears + Practice + (1|Med_ID), data = HABS_HD_longitudinal)
+car::Anova(a2) 
+effectsize(a2)
+eta_squared(a2)
+```
+
+Bilingualism related effects are not significant
+
+### 2.2.3 Analysis on Cognitive Performance: Long-term Memory (Episodic_Memory)
+```{r}
+a3<-lmer(Episodic_Memory ~  A0 * dA * Bilingualism + dA * Bilingualism * Gender + dA * Bilingualism * Ethnicity + EducationYears + Practice + (1|Med_ID), data = HABS_HD_longitudinal)
+car::Anova(a3) 
+effectsize(a3)
+eta_squared(a3)
+```
+
+dA:Bilingualism is significant, indicating bilingual protective effect
+
+Plot for Episodic_Memory Performance
+```{r}
+plot_spaghetti <- function(data, x_var, y_var, x_label, y_label, ymin, ymax, color_choice) {
+  ggplot(data, aes(x = .data[[x_var]], y = .data[[y_var]], color = Bilingualism)) +
+   geom_point(size = 2, stroke = 1, alpha = 0.1, color = color_choice) +
+    geom_line(aes(group = Med_ID), lty = 2, alpha = 0.2, color = "black") +
+    geom_smooth(method = "lm", se = FALSE, size = 0.5, lty = 1, aes(group = Med_ID)) +
+     geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, color = "black", linewidth = 1, lty = 1) +
+    labs(x = x_label, y = y_label, color = "Bilingualism") +
+    ylim(ymin, ymax) +
+    theme_minimal() + 
+         #facet_grid( Ethnicity ~ Bilingualism) + 
+ facet_wrap(~ Bilingualism) +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      axis.title.x = element_text(size = 16, family = "serif"),
+      axis.title.y = element_text(size = 16, family = "serif"), 
+      axis.text.x = element_text(size = 14, family = "serif"),  
+      axis.text.y = element_text(size = 14,, family = "serif")  
+    )+
+    scale_color_manual(values = c("Monolingual" = "#E69F00", "Bilingual" = "#377EB8"))  # custom color palette
+}
+
+p5<-plot_spaghetti(HABS_HD_longitudinal, "Age", "Episodic_Memory","Age","Episodic_Memory Changes across Visits",min(HABS_HD_longitudinal$Episodic_Memory), max(HABS_HD_longitudinal$Episodic_Memory),  color_choice = "darkorange")
+
+ggsave("Episodic_Memory_longitudinal.png", plot = p5, 
+       width = 8, height = 6, units = "in", 
+       dpi = 800) 
+
+
+```
+Bilingualism was associated with a slower decline in episodic memory over time.
+
+
+
