@@ -224,7 +224,12 @@ ggsave("Probability_of_PD.png", plot = p1,
 
 ### 1.2 Cognitive Abilities as Outcome
 
-### 1.2.1 EFA for cognitive measures 
+### 1.2.1 EFA for cognitive measures
+
+```{r}
+HABS_HD_cross_sectional$DSF_Total[HABS_HD_cross_sectional$DSF_Total == -9999] <- NA 
+HABS_HD_cross_sectional$DSB_Total[HABS_HD_cross_sectional$DSB_Total == -9999] <- NA
+```
 
 ```{r}
 # Reverse Trails A and B so higher = better
@@ -242,25 +247,25 @@ efa_data = subset(HABS_data_z, select=c('Trails_A_Reversed', 'Trails_B_Reversed'
 
 ```{r}
 psych::fa.parallel(efa_data,, fa = "pc")
-#### Parallel analysis suggests that the number of components =  3 
+#### Parallel analysis suggests that the number of components =  2 
 
 # Run PCA
-pca_result <- psych::principal(efa_data, nfactors = 3, rotate = "oblimin")
+pca_result <- psych::principal(efa_data, nfactors = 2, rotate = "oblimin")
 # View results
 print(pca_result, digits = 2, cutoff = 0.3)
 pca_result$Vaccounted
 ```
 
 ```{r}
-three_factor_efa_fit = efa(data = efa_data, nfactors=3, missing="fiml", rotation = "oblimin")
-summary(three_factor_efa_fit, fit.measures = TRUE, standardized = TRUE)
-predicted_scores <- lavPredict(three_factor_efa_fit)
+two_factor_efa_fit = efa(data = efa_data, nfactors=2, missing="fiml", rotation = "oblimin")
+summary(two_factor_efa_fit, fit.measures = TRUE, standardized = TRUE)
+predicted_scores <- lavPredict(two_factor_efa_fit)
 predicted_scores <- as.data.frame(predicted_scores)
-colnames(predicted_scores) <- c("Executive_Function", "Working_Memory", "Episodic_Memory")
+colnames(predicted_scores) <- c("Executive_Function", "Episodic_Memory")
 HABS_HD_cross_sectional <- cbind(HABS_HD_cross_sectional, predicted_scores)
 ```
 
-We conducted exploratory factor analysis with 3 factors to identify the latent structure of the cognitive battery and to guide confirmatory modelling
+We conducted exploratory factor analysis with 2 factors to identify the latent structure of the cognitive battery and to guide confirmatory modelling
 
 ### 1.2.2 Analysis on Cognitive Performance: Executive_Function domain 
 ```{r}
@@ -304,28 +309,6 @@ car::Anova(model_W)
 effectsize(model_W)
 eta_squared(model_W)
 ```
-
-The main effect of bilingualism is not significant but the interaction Bilingualism: Gender is significant. So we breakdown the interaction within White people
-
-```{r}
-### analysis in White females
-model_WF <- lm(Executive_Function ~ Bilingualism * poly(Age,2)  +  EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='White'& Gender =="Female"))
-car::Anova(model_WF) 
-effectsize(model_WF)
-eta_squared(model_WF)
-```
-
-No bilingual effect in white females
-
-```{r}
-### analysis in White males
-model_WM <- lm(Executive_Function ~ Bilingualism * poly(Age,2)  +  EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='White'& Gender =="Male"))
-car::Anova(model_WM)  
-effectsize(model_WM)
-eta_squared(model_WM)
-```
-
-NO bilingual effect in White males
 
 Interaction between Bilingualism and Gender is significant, so break down by Gender 
 ```{r}
@@ -409,19 +392,7 @@ ggsave("Executive_Function.png", plot = p2,
 
 For Executive Function: A multiple linear regression model was fitted to examine the relationship between bilingualism and executive function, controlling for age (modeled as a second-degree polynomial), gender, ethnicity, and education. Significant interactions were found between bilingualism and gender and between bilingualism and ethnicity. Further analyses showed a bilingual advantage among Hispanic females and males overall, while Black females exhibited a bilingual disadvantage; no significant effects were found among White participants.
 
-### 1.2.3 Analysis on Cognitive Performance: Working memory 
-```{r}
-HABS_HD_cross_sectional$Ethnicity<-relevel(HABS_HD_cross_sectional$Ethnicity, ref="White")
-a2 <- lm(Working_Memory ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + Bilingualism * Ethnicity + EducationYears, data = HABS_HD_cross_sectional)  
-summary(a2)
-car::Anova(a2) 
-effectsize(a2)
-eta_squared(a2)
-```
-
-The main effect of Ethnicity is significant: Black and White outperformed Hispanic people.
-
-### 1.2.4 Analysis on Cognitive Performance: Episodic Memory
+### 1.2.3 Analysis on Cognitive Performance: Episodic Memory
 ```{r}
 HABS_HD_cross_sectional$Ethnicity<-relevel(HABS_HD_cross_sectional$Ethnicity, ref="Black")
 a3 <- lm(Episodic_Memory ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + Bilingualism * Ethnicity + EducationYears, data = HABS_HD_cross_sectional)  
@@ -528,7 +499,7 @@ p3<-ggplot(plot_data, aes(x = Ethnicity, y = Episodic_Memory, fill = Bilingualis
   ggtitle("Episodic Memory by Bilingualism Across Ethnic and Gender Groups") +
   scale_fill_brewer(palette = "Set1") +
   theme_bw() +
-  scale_y_continuous(labels = percent_format(accuracy = 1)) + 
+  #scale_y_continuous(labels = percent_format(accuracy = 1)) + 
   theme(
     plot.title = element_text(hjust = 0.5, size = 16, family = "serif"),
     legend.title = element_blank(),
@@ -847,6 +818,10 @@ Regression analysis predicting longitudinal cognitive stability (StableCU) revea
 ### 2.2.1 EFA for cognitive measures 
 
 ```{r}
+HABS_HD_longitudinal$DSF_Total[HABS_HD_longitudinal$DSF_Total == -9999] <- NA 
+HABS_HD_longitudinal$DSB_Total[HABS_HD_longitudinal$DSB_Total == -9999] <- NA
+```
+```{r}
 # Reverse Trails A and B so higher = better
 HABS_HD_longitudinal$Trails_A_Reversed <- -scale(HABS_HD_longitudinal$Trails_A_Time)
 HABS_HD_longitudinal$Trails_B_Reversed <- -scale(HABS_HD_longitudinal$Trails_B_Time)
@@ -864,19 +839,19 @@ efa_data2 = subset(HABS_data_z2, select=c('Trails_A_Reversed', 'Trails_B_Reverse
 
 ```{r}
 # Run PCA
-pca_result <- psych::principal(efa_data2, nfactors = 3, rotate = "oblimin")
+pca_result <- psych::principal(efa_data2, nfactors = 2, rotate = "oblimin")
 # View results
 print(pca_result, digits = 2, cutoff = 0.3)
 pca_result$Vaccounted
 ```
 
 ```{r}
-three_factor_efa_fit2 = lavaan::efa(data =efa_data2, nfactors=3, rotation='oblimin', missing="fiml")
-summary(three_factor_efa_fit2, fit.measures = TRUE, standardized = TRUE)
+two_factor_efa_fit2 = lavaan::efa(data =efa_data2, nfactors=2, rotation='oblimin', missing="fiml")
+summary(two_factor_efa_fit2, fit.measures = TRUE, standardized = TRUE)
 
-predicted_scores2 <- lavPredict(three_factor_efa_fit2)
+predicted_scores2 <- lavPredict(two_factor_efa_fit2)
 predicted_scores2 <- as.data.frame(predicted_scores2)
-colnames(predicted_scores2) <- c("Executive_Function", "Working_Memory", "Episodic_Memory")
+colnames(predicted_scores2) <- c("Executive_Function", "Episodic_Memory")
 
 HABS_HD_longitudinal <- cbind(HABS_HD_longitudinal, predicted_scores2)
 ```
@@ -891,17 +866,9 @@ eta_squared(a1)
 
 We fit a mixed-effects model with Executive_Function as the outcome, including participant-level random intercepts to account for repeated measurements.Baseline age (A0) and time since baseline (dA) were modelled as fixed effects, with interactions testing whether longitudinal change differed by bilingual status and demographic factors, Practice effect is also controlled in the model. Inference was based on Wald chi-square tests (car::Anova) with follow-up contrasts where relevant.
 
-### 2.2.2 Analysis on Cognitive Performance: Short-term Memory (STM)
-```{r}
-a2<-lmer(Working_Memory ~  A0 * dA * Bilingualism + dA * Bilingualism * Gender + dA * Bilingualism * Ethnicity + EducationYears + Practice + (1|Med_ID), data = HABS_HD_longitudinal)
-car::Anova(a2) 
-effectsize(a2)
-eta_squared(a2)
-```
-
 Bilingualism related effects are not significant
 
-### 2.2.3 Analysis on Cognitive Performance: Long-term Memory (Episodic_Memory)
+### 2.2.2 Analysis on Cognitive Performance: Long-term Memory (Episodic_Memory)
 ```{r}
 a3<-lmer(Episodic_Memory ~  A0 * dA * Bilingualism + dA * Bilingualism * Gender + dA * Bilingualism * Ethnicity + EducationYears + Practice + (1|Med_ID), data = HABS_HD_longitudinal)
 car::Anova(a3) 
@@ -943,6 +910,7 @@ ggsave("Episodic_Memory_longitudinal.png", plot = p5,
 
 ```
 Bilingualism was associated with a slower decline in episodic memory over time.
+
 
 
 
