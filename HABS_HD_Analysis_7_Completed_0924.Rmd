@@ -40,6 +40,7 @@ library(ppcor)
 library(broom.mixed)
 library(cowplot)
 library(ggsignif)
+library(emmeans)
 ```
 We loaded required R packages (readxl, readr, lme4, lmerTest, sjstats, nlme, dplyr, plyr, pwr, olsrr, car, MatchIt, ggplot2, glmmTMB, tableone, sjPlot, aod, ggeffects, effects, ggplot2, scales, effectsize, GGally, lavaan, tableone, GGally, corrplot) to support data handling, modeling, and visualisation
 
@@ -63,7 +64,7 @@ Descriptive data on bilinguals vs. monolinguals across ethnic groups
 # Define variables again
 vars <- c("Age", "Gender","EducationYears", "MMSE_Total","Ethnicity","CognitiveStatus")
 table1 <- CreateTableOne(vars = vars, 
-                        strata = c("Bilingualism" ), 
+                        strata = c("Bilingualism","Ethnicity" ), 
                          data = HABS_HD_cross_sectional, 
                          factorVars = c( "Gender","Interview_Language","Ethnicity","CognitiveStatus"),test= TRUE
                          )
@@ -861,79 +862,6 @@ Regression analysis predicting longitudinal cognitive stability (StableCU) revea
 
 ### 2.2.1 EFA for cognitive measures 
 
-
-###Cognition changes caculate
-```{r}
-mydata<-as.data.frame(read_excel("HABS_HD_longitudinal.xlsx"))
-mydata$Trails_A_Reversed <- -scale(mydata$Trails_A_Time)
-mydata$Trails_B_Reversed <- -scale(mydata$Trails_B_Time)
-
-# Define the list of cognitive tests
-cog_tests <- c(
-  "Trails_A_Reversed",
-  "Trails_B_Reversed",
-  "Digit_Symbol_Substitution",
-  "DSF_Total",
-  "DSB_Total",
-  "LM1_AB_Total",
-  "LM2_AB_Total",
-  "SEVLT_T1235_Total",
-  "SEVLT_DR_Total",
-  "FAS_Total",
-  "Animal_Total"
-)
-
-mydata <- mydata %>%
-  mutate(across(all_of(cog_tests), ~ suppressWarnings(as.numeric(.))))
-# --------------------------
-# Step 1: Estimate slopes for each subject and each test
-# --------------------------
-slopes <- mydata %>%
-  pivot_longer(cols = all_of(cog_tests), names_to = "TestName", values_to = "Score") %>%
-  group_by(Med_ID, TestName) %>%
-  do({
-    model <- tryCatch(lm(Score ~ dA, data = .), error = function(e) NULL)
-    if (!is.null(model)) {
-      data.frame(Slope = coef(model)["dA"])
-    } else {
-      data.frame(Slope = NA)
-    }
-  }) %>%
-  ungroup()
-
-# --------------------------
-# Step 2: Reshape to wide format (rows = Med_ID, cols = slopes of tests)
-# --------------------------
-slopes_wide <- slopes %>%
-  pivot_wider(names_from = TestName, values_from = Slope)
-
-# Inspect slope matrix
-head(slopes_wide)
-
-# --------------------------
-# Step 3: Prepare slope matrix for PCA/EFA
-# --------------------------
-# --- FIX: make sure it's a tibble first ---
-slopes_wide <- as_tibble(slopes_wide)
-
-slope_matrix <- slopes_wide %>%
-  dplyr::select(-Med_ID) %>%   # explicitly use dplyr::select
-  drop_na()
-# --------------------------
-# --------------------------
-# Step 4: Scree plot to decide number of factors
-# --------------------------
-fa.parallel(slope_matrix, fa = "pc", n.iter = 100)
-
-# Step 5: PCA on slopes
-# --------------------------
-pca_res <- principal(slope_matrix, nfactors = 2, rotate = "oblimin")
-print(pca_res, digits = 3, cut = 0.3)
-
-two_factor_efa_fit2 = lavaan::efa(data =slope_matrix, nfactors=4, rotation='oblimin', missing="fiml")
-summary(two_factor_efa_fit2, fit.measures = TRUE, standardized = TRUE)
-```
-
 ```{r}
 # Reverse Trails A and B so higher = better
 HABS_HD_longitudinal$Trails_A_Reversed <- -scale(HABS_HD_longitudinal$Trails_A_Time)
@@ -970,15 +898,14 @@ predicted_scores2 <- as.data.frame(predicted_scores2)
 colnames(predicted_scores2) <- c("Executive_Function", "Episodic_Memory")
 
 HABS_HD_longitudinal <- cbind(HABS_HD_longitudinal, predicted_scores2)
-write.xlsx(HABS_HD_longitudinal, file = "HABS_HD_longitudinal_cognition.xlsx")
 ```
 
 ### 2.2.2 Analysis on Cognitive Performance: Executive_Function domain 
 
 ```{r}
 a1<-lmer(Executive_Function ~  A0 * dA * Bilingualism * Gender * Ethnicity + EducationYears + Practice + (1|Med_ID), data = HABS_HD_longitudinal)
+car::Anova(a1)
 test(emtrends(a1, ~ Bilingualism + Ethnicity, var = "dA"))
-# car::Anova(a1)
 # effectsize(a1)
 # eta_squared(a1)
 ```
@@ -1010,50 +937,6 @@ eta_squared(a1_B)
 Plot for executive function Performance
 
 ```{r}
-plot_spaghetti <- function(data, x_var, y_var, x_label, y_label, ymin, ymax, color_choice, plot.title) {
-  ggplot(data, aes(x = .data[[x_var]], y = .data[[y_var]], color = Bilingualism)) +
-    geom_point(size = 2, stroke = 1, alpha = 0.1, color = color_choice) +
-    geom_line(aes(group = Med_ID), lty = 2, alpha = 0.2, color = "black") +
-    geom_smooth(method = "lm", se = FALSE, size = 0.5, lty = 1, aes(group = Med_ID)) +
-    geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, aes(group = Bilingualism), linewidth = 1, lty = 1) +
-    labs(
-      x = x_label, 
-      y = y_label, 
-      color = "Bilingualism",
-      title = plot.title
-    ) +
-    ylim(ymin, ymax) +
-    theme_minimal() + 
-    facet_grid( ~ Ethnicity) +
-    theme(
-      plot.title = element_text(hjust = 0.5, size = 20, family = "serif", face = "bold"),  
-      axis.title.x = element_text(size = 16, family = "serif"),
-      axis.title.y = element_text(size = 16, family = "serif"), 
-      axis.text.x = element_text(size = 14, family = "serif"),  
-      axis.text.y = element_text(size = 14, family = "serif"),
-          strip.text = element_text(size = 14, family = "serif"),
-      legend.position = "top",
-      legend.title = element_text(size = 14,family = "serif"),
-      legend.text = element_text(size = 14,family = "serif")
-    ) +
-    scale_color_manual(values = c("Monolingual" = "#E69F00", "Bilingual" = "#377EB8"))  # custom color palette
-}
-
-plot_spaghetti(
-  HABS_HD_longitudinal, 
-  "Age", 
-  "Executive_Function",
-  "Age",
-  "Executive Function",
-  min(HABS_HD_longitudinal$Executive_Function), 
-  max(HABS_HD_longitudinal$Executive_Function),  
-  color_choice = "darkorange",
-  plot.title = "Executive Function Changes across Visits"
-)
-
-```
-
-```{r}
 
 smaller_dat <- subset(HABS_HD_longitudinal, select = c("Med_ID", "Visit_ID" ,"Bilingualism", "Gender", "Ethnicity","Age","dA","Executive_Function" ,"Episodic_Memory", "Max_Visit_ID"))
 
@@ -1070,10 +953,10 @@ ggplot(smaller_dat, aes(y = Executive_Function, x = Visit_ID)) + facet_grid(~Eth
    # scale_x_discrete(breaks=c("1", "5")) + #, labels = c("1" = "First Visit", "9" = "Last Visit")) +
    geom_smooth(method = "lm", formula = "y~x", aes(colour = Bilingualism), se=FALSE, lwd = 1.5)
 
-# ggplot(smaller_dat_firstlastvisit, aes(y = Episodic_Memory, x = Visit_ID2)) + facet_grid(~Ethnicity) +
+ggplot(smaller_dat_firstlastvisit, aes(y = Episodic_Memory, x = Visit_ID2)) + facet_grid(~Ethnicity) +
 # #   # geom_line(aes(group = Med_ID, colour = Bilingualism), alpha = 0.2) +
-#    scale_x_discrete(breaks=c("1", "5")) + #, labels = c("1" = "First Visit", "9" = "Last Visit")) +
-#    geom_smooth(method = "lm", formula = "y~x", aes(colour = Bilingualism), se=FALSE, lwd = 1.5)
+   scale_x_discrete(breaks=c("1", "5")) + #, labels = c("1" = "First Visit", "9" = "Last Visit")) +
+   geom_smooth(method = "lm", formula = "y~x", aes(colour = Bilingualism), se=FALSE, lwd = 1.5)
 
 
 ggplot(smaller_dat, aes(y = Episodic_Memory, x = Visit_ID)) + facet_grid(~Ethnicity) +
@@ -1081,10 +964,6 @@ ggplot(smaller_dat, aes(y = Episodic_Memory, x = Visit_ID)) + facet_grid(~Ethnic
  geom_smooth(method = "lm", formula = "y~x", aes(colour = Bilingualism), se=FALSE, lwd = 1.5)
 
 ```
-
-
-
-
 
 
 
@@ -1121,7 +1000,7 @@ plot_spaghetti <- function(data, x_var, y_var, x_label, y_label, ymin, ymax, col
     scale_color_manual(values = c("Monolingual" = "#E69F00", "Bilingual" = "#377EB8"))  # custom color palette
 }
 
-p5<-plot_spaghetti(
+plot_spaghetti(
   HABS_HD_longitudinal, 
   "Age", 
   "Executive_Function",
@@ -1182,7 +1061,7 @@ plot_spaghetti <- function(data, x_var, y_var, x_label, y_label, ymin, ymax, col
     scale_color_manual(values = c("Monolingual" = "#E69F00", "Bilingual" = "#377EB8"))  # custom color palette
 }
 
-p6<-plot_spaghetti(
+plot_spaghetti(
   HABS_HD_longitudinal, 
   "Age", 
   "Episodic_Memory",
