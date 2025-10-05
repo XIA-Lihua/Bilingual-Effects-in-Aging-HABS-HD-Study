@@ -41,6 +41,8 @@ library(broom.mixed)
 library(cowplot)
 library(ggsignif)
 library(emmeans)
+library(ggtext)
+library(ggpubr)
 ```
 We loaded required R packages (readxl, readr, lme4, lmerTest, sjstats, nlme, dplyr, plyr, pwr, olsrr, car, MatchIt, ggplot2, glmmTMB, tableone, sjPlot, aod, ggeffects, effects, ggplot2, scales, effectsize, GGally, lavaan, tableone, GGally, corrplot) to support data handling, modeling, and visualisation
 
@@ -64,7 +66,7 @@ Descriptive data on bilinguals vs. monolinguals across ethnic groups
 # Define variables again
 vars <- c("Age", "Gender","EducationYears", "MMSE_Total","Ethnicity","CognitiveStatus")
 table1 <- CreateTableOne(vars = vars, 
-                        strata = c("Bilingualism","Ethnicity" ), 
+                        strata = c("Bilingualism"), 
                          data = HABS_HD_cross_sectional, 
                          factorVars = c( "Gender","Interview_Language","Ethnicity","CognitiveStatus"),test= TRUE
                          )
@@ -117,6 +119,17 @@ We fit a regression model with PD as the dependent variable. Predictors included
 Interaction between Bilingualism and Ethnicity is significant, so break down by ethnicity
 
 ```{r}
+## Analysis in Hispanic
+model_H <- glm(PD ~ Bilingualism * poly(Age,2)* Gender + EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='Hispanic'), family = binomial)
+car::Anova(model_H) 
+effectsize(model_H)
+exp(cbind(OR = coef(model_H), confint(model_H)))
+eta_squared(model_H)
+```
+
+Hispanic Bilinguals MORE likely to be CU
+
+```{r}
 ## Analysis in Black
 model_B <- glm(PD ~ Bilingualism * poly(Age,2) * Gender + EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='Black'), family = binomial)
 car::Anova(model_B)
@@ -138,16 +151,7 @@ eta_squared(model_W)
 
 No bilingualism effect in White
 
-```{r}
-## Analysis in Hispanic
-model_H <- glm(PD ~ Bilingualism * poly(Age,2)* Gender + EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='Hispanic'), family = binomial)
-car::Anova(model_H) 
-effectsize(model_H)
-exp(cbind(OR = coef(model_H), confint(model_H)))
-eta_squared(model_H)
-```
 
-Hispanic Bilinguals MORE likely to be CU
 
 Function for plotting bar graphs
 ```{r}
@@ -210,9 +214,9 @@ sig_data <- data.frame(
 )
 
 plot_data_ethnicity$Ethnicity <- factor(plot_data_ethnicity$Ethnicity,
-                                        levels = c("Hispanic", "White", "Black"))
+                                        levels = c("Hispanic", "Black", "White"))
 sig_data$Ethnicity <- factor(sig_data$Ethnicity,
-                             levels = c("Hispanic", "White", "Black"))
+                             levels = c("Hispanic", "Black" ,"White"))
 
 p1<-ggplot(plot_data_ethnicity, aes(x = Bilingualism, y = PD, fill = Bilingualism)) +
   geom_col(position = position_dodge(0.9), width = 0.7) +
@@ -381,8 +385,6 @@ car::Anova(model_HM)
 effectsize(model_HM)
 eta_squared(model_HM)
 ```
-
-
 ```{r}
 ##analysis in Black
 model_B <- lm(Executive_Function ~ Bilingualism * poly(Age,2) + Bilingualism * Gender + EducationYears, data = subset(HABS_HD_cross_sectional, Ethnicity=='Black'))
@@ -391,7 +393,6 @@ summary(model_B)
 effectsize(model_B)
 eta_squared(model_B)
 ```
-
 The main effect of bilingualism is not significant in Black
 
 ```{r}
@@ -404,35 +405,88 @@ eta_squared(model_W)
 
 The main effect of bilingualism is not significant.
 
-
-
 ```{r}
-
 HABS_HD_cross_sectional_cleaned<-filter(HABS_HD_cross_sectional, !is.na(Executive_Function))
-plot_data  <- fot.fun(data=HABS_HD_cross_sectional_cleaned, "Executive_Function", c("Bilingualism","Ethnicity","Gender"))
+plot_data  <- fot.fun(data=HABS_HD_cross_sectional_cleaned, "Executive_Function", c("Bilingualism","Ethnicity"))
 
 plot_data$Ethnicity <- factor(plot_data$Ethnicity,
                                         levels = c("Hispanic", "White", "Black"))
 sig_data <- data.frame(
-  group1 = c("Monolingual", "Monolingual", "Monolingual"),
-  group2 = c("Bilingual", "Bilingual", "Bilingual"),
-  Ethnicity = c("Black", "Hispanic", "Hispanic"),
-  Gender = c("Female", "Female", "Male"),
-  y.position = c(-0.8, 0.5, -1.2),  # adjust heights to fit your y-scale
-  label = c("**", "***", "**")     # significance levels
+  Ethnicity   = "Hispanic",   # only for these groups
+  xmin       = c("Monolingual", "Monolingual"),
+  xmax        = c("Bilingual", "Bilingual"),
+  y_position  = -1.0,            # adjust based on your scale
+  annotation  = "***"
 )
 
 sig_data$Ethnicity <- factor(sig_data$Ethnicity,
                              levels = c("Hispanic", "White", "Black"))
 
-p2<-ggplot(plot_data, aes(x = Ethnicity, y = Executive_Function, fill = Bilingualism)) +
+p2<-ggplot(plot_data, aes(x = Bilingualism, y = Executive_Function, fill = Bilingualism)) +
   geom_col(position = position_dodge(0.9), width = 0.7) +
   geom_errorbar(aes(ymin = Executive_Function - se, ymax = Executive_Function + se),
                 width = 0.2,
                 position = position_dodge(0.9)) +
-  facet_wrap(~Gender) +
+  facet_wrap(~Ethnicity) +
   ylab("Executive Function") +
-  xlab("Ethnicity") +
+  xlab("Bilingualism") +
+  ggtitle("Executive Function by Bilingualism Across Ethnic Groups") +
+  scale_fill_brewer(palette = "Set1") +
+  theme_bw() +
+  #scale_y_continuous(labels = percent_format(accuracy = 1)) + 
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, family = "serif"),
+    legend.position = "top",
+      legend.title = element_text(size = 14, family = "serif" ),
+      legend.text = element_text(size = 14, family = "serif"),
+    axis.title.x = element_text(size = 14, family = "serif"),
+    axis.title.y = element_text(size = 14, family = "serif"),
+    axis.text.x = element_text(size = 13, family = "serif"),  
+    axis.text.y = element_text(size = 13, family = "serif"),
+    strip.text = element_text(size = 14, family = "serif")
+  )+
+  # Add significance only for Hispanic and Black
+ geom_signif(
+    data = sig_data,
+    aes(xmin = xmin, xmax = xmax, annotations = annotation, y_position = y_position),
+    manual = TRUE,
+    inherit.aes = FALSE,   
+    tip_length = 0,
+    size = 1,
+    textsize = 5
+  )
+
+ggsave("Executive_Function.png", plot = p2, 
+       width = 8, height = 6, units = "in", 
+       dpi = 800) 
+```
+```{r}
+HABS_HD_cross_sectional_cleaned<-filter(HABS_HD_cross_sectional, !is.na(Executive_Function))
+plot_data  <- fot.fun(data=HABS_HD_cross_sectional_cleaned, "Executive_Function", c("Bilingualism","Ethnicity","Gender"))
+
+plot_data$Ethnicity <- factor(plot_data$Ethnicity,
+                                        levels = c("Hispanic", "Black", "White"))
+sig_data <- data.frame(
+  Ethnicity = factor(c("Black", "Hispanic", "Hispanic"),
+                     levels = c("Hispanic", "White", "Black")),
+  Gender = c("Female", "Female", "Male"),
+  group1 = "Monolingual",
+  group2 = "Bilingual",
+  y.position = c(-0.8, -0.9, -1.2),  # adjust heights for your y-scale
+  label = c("**", "***", "**")      # significance levels
+)
+
+sig_data$Ethnicity <- factor(sig_data$Ethnicity,
+                             levels = c("Hispanic", "White", "Black"))
+
+p2<-ggplot(plot_data, aes(x = Gender, y = Executive_Function, fill = Bilingualism)) +
+  geom_col(position = position_dodge(0.9), width = 0.7) +
+  geom_errorbar(aes(ymin = Executive_Function - se, ymax = Executive_Function + se),
+                width = 0.2,
+                position = position_dodge(0.9)) +
+  facet_wrap(~Ethnicity) +
+  ylab("Executive Function") +
+  xlab("Gender") +
   ggtitle("Executive Function by Bilingualism Across Ethnic and Gender Groups") +
   scale_fill_brewer(palette = "Set1") +
   theme_bw() +
@@ -448,22 +502,23 @@ p2<-ggplot(plot_data, aes(x = Ethnicity, y = Executive_Function, fill = Bilingua
     strip.text = element_text(size = 13, family = "serif")
   ) +
   # Add significance
-  stat_pvalue_manual(sig_data, 
-                     x = "Ethnicity", 
-                     y.position = "y.position", 
-                     label = "label", 
-                     group1 = "group1",
-                     group2 = "group2",
-                     inherit.aes = FALSE)
+  stat_pvalue_manual(
+    sig_data,
+    x = "Gender",
+    y.position = "y.position",
+    label = "label",
+    group1 = "group1",
+    group2 = "group2",
+    inherit.aes = FALSE
+  )
 
 ggsave("Executive_Function.png", plot = p2, 
        width = 8, height = 6, units = "in", 
        dpi = 800) 
 ```
 
-
-
 For Executive Function: A multiple linear regression model was fitted to examine the relationship between bilingualism and executive function, controlling for age (modeled as a second-degree polynomial), gender, ethnicity, and education. Significant interactions were found between bilingualism and gender and between bilingualism and ethnicity. Further analyses showed a bilingual advantage among Hispanic females and males overall, while Black females exhibited a bilingual disadvantage; no significant effects were found among White participants.
+
 
 
 ### 1.2.3 Analysis on Cognitive Performance: Episodic Memory
@@ -507,16 +562,13 @@ eta_squared(model_W)
 effectsize(model_W)
 
 ```
-
 No bilingual effect in White people.
-
-
 
 ```{r}
 HABS_HD_cross_sectional_cleaned<-filter(HABS_HD_cross_sectional, !is.na(Episodic_Memory))
 plot_data  <- fot.fun(data=HABS_HD_cross_sectional_cleaned, "Episodic_Memory", c("Bilingualism","Ethnicity"))
 plot_data$Ethnicity <- factor(plot_data$Ethnicity,
-                                        levels = c("Hispanic", "White", "Black"))
+                                        levels = c("Hispanic", "Black", "White"))
 # Example significance data frame
 sig_data <- data.frame(
   Ethnicity   = c("Hispanic", "Black"),   # only for these groups
@@ -526,10 +578,8 @@ sig_data <- data.frame(
   annotation  = c("***", "*")
 )
 
-
 sig_data$Ethnicity <- factor(sig_data$Ethnicity,
-                             levels = c("Hispanic", "White", "Black"))
-
+                             levels = c("Hispanic", "Black", "White"))
 
 p3<-ggplot(plot_data, aes(x = Bilingualism, y = Episodic_Memory, fill = Bilingualism)) +
   geom_col(position = position_dodge(0.9), width = 0.7) +
@@ -591,8 +641,9 @@ table(HABS_HD_cross_sectional_English$Ethnicity,HABS_HD_cross_sectional_English$
 ```{r}
 model_English <- lm(AMNART ~ Bilingualism2 * poly(Age,2) * Gender  * Ethnicity + EducationYears, data = HABS_HD_cross_sectional_English)
 car::Anova(model_English)
-effectsize(model_English)
 eta_squared(model_English)
+effectsize(model_English)
+
 ```
 
 Interaction between Bilingualism and Ethnicity is significant, so break down by ethnicity 
@@ -726,8 +777,10 @@ HABS_HD_longitudinal_CU<-droplevels(HABS_HD_longitudinal_CU)
 
 contrasts(HABS_HD_longitudinal_CU$Gender) = c(-1,1)  ### (male:-1; female: 1)
 contrasts(HABS_HD_longitudinal_CU$Bilingualism) = c(-1,1) ### (monolingual:-1; bilingual: 1)
-contrasts(HABS_HD_longitudinal_CU$Ethnicity) = c(-1,1) ### (white:-1; Hispanic: 1)
+contrasts(HABS_HD_longitudinal_CU$Ethnicity) = c(-1,1) ### (Hispanic:-1; White: 1)
 ```
+
+
 
 ```{r}
 model_stable <- glm(PD ~ Bilingualism * ( poly(Age,2) + Gender + Ethnicity) + EducationYears, data = HABS_HD_longitudinal_CU, family = binomial)
@@ -905,9 +958,9 @@ HABS_HD_longitudinal <- cbind(HABS_HD_longitudinal, predicted_scores2)
 ```{r}
 a1<-lmer(Executive_Function ~  A0 * dA * Bilingualism * Gender * Ethnicity + EducationYears + Practice + (1|Med_ID), data = HABS_HD_longitudinal)
 car::Anova(a1)
-test(emtrends(a1, ~ Bilingualism + Ethnicity, var = "dA"))
-# effectsize(a1)
-# eta_squared(a1)
+test(emtrends(a1, ~ Bilingualism * Ethnicity, var = "dA"))
+effectsize(a1)
+eta_squared(a1)
 ```
 
 We fit a mixed-effects model with Executive_Function as the outcome, including participant-level random intercepts to account for repeated measurements.Baseline age (A0) and time since baseline (dA) were modelled as fixed effects, with interactions testing whether longitudinal change differed by bilingual status and demographic factors, Practice effect is also controlled in the model. Inference was based on Wald chi-square tests (car::Anova) with follow-up contrasts where relevant.
@@ -934,94 +987,166 @@ effectsize(a1_B)
 eta_squared(a1_B)
 ```
 
-Plot for executive function Performance
-
-```{r}
-
-smaller_dat <- subset(HABS_HD_longitudinal, select = c("Med_ID", "Visit_ID" ,"Bilingualism", "Gender", "Ethnicity","Age","dA","Executive_Function" ,"Episodic_Memory", "Max_Visit_ID"))
-
-smaller_dat_firstlastvisit <- subset(smaller_dat, Visit_ID == 1 | Visit_ID == Max_Visit_ID)
-smaller_dat_firstlastvisit$Visit_ID2 <- ifelse(smaller_dat_firstlastvisit$Visit_ID == 1, 1, 5)
-
-ggplot(smaller_dat_firstlastvisit, aes(y = Executive_Function, x = Visit_ID2)) + facet_grid(~Ethnicity) +
- # geom_line(aes(group = Med_ID, colour = Bilingualism), alpha = 0.2) +
-   scale_x_discrete(breaks=c("1", "5")) + #, labels = c("1" = "First Visit", "9" = "Last Visit")) +
-   geom_smooth(method = "lm", formula = "y~x", aes(colour = Bilingualism), se=FALSE, lwd = 1.5)
-
-ggplot(smaller_dat, aes(y = Executive_Function, x = Visit_ID)) + facet_grid(~Ethnicity) +
-  geom_line(aes(group = Med_ID, colour = Bilingualism), alpha = 0.2) +
-   # scale_x_discrete(breaks=c("1", "5")) + #, labels = c("1" = "First Visit", "9" = "Last Visit")) +
-   geom_smooth(method = "lm", formula = "y~x", aes(colour = Bilingualism), se=FALSE, lwd = 1.5)
-
-ggplot(smaller_dat_firstlastvisit, aes(y = Episodic_Memory, x = Visit_ID2)) + facet_grid(~Ethnicity) +
-# #   # geom_line(aes(group = Med_ID, colour = Bilingualism), alpha = 0.2) +
-   scale_x_discrete(breaks=c("1", "5")) + #, labels = c("1" = "First Visit", "9" = "Last Visit")) +
-   geom_smooth(method = "lm", formula = "y~x", aes(colour = Bilingualism), se=FALSE, lwd = 1.5)
-
-
-ggplot(smaller_dat, aes(y = Episodic_Memory, x = Visit_ID)) + facet_grid(~Ethnicity) +
- geom_line(aes(group = Med_ID, colour = Bilingualism), alpha = 0.2) +
- geom_smooth(method = "lm", formula = "y~x", aes(colour = Bilingualism), se=FALSE, lwd = 1.5)
-
-```
-
-
-
-
 
 
 ```{r}
-plot_spaghetti <- function(data, x_var, y_var, x_label, y_label, ymin, ymax, color_choice, plot.title) {
-  ggplot(data, aes(x = .data[[x_var]], y = .data[[y_var]], color = Bilingualism)) +
-    geom_point(size = 2, stroke = 1, alpha = 0.1, color = color_choice) +
-    geom_line(aes(group = Med_ID), lty = 2, alpha = 0.2, color = "black") +
-    geom_smooth(method = "lm", se = FALSE, size = 0.5, lty = 1, aes(group = Med_ID)) +
-    geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, color = "black", linewidth = 1, lty = 1) +
+plot_spaghetti_collapsed <- function(data, x_var, y_var, x_label, y_label, ymin, ymax, plot.title, plot.subtitle = NULL) {
+  ggplot(data, aes(x = .data[[x_var]], y = .data[[y_var]])) +
+    # raw points
+    geom_point(alpha = 0.3, size = 2, color = "darkorange") +
+    # raw trajectories per participant
+    geom_line(aes(group = Med_ID), linetype = "dotted", alpha = 0.2, color = "#377EB8") +
+    # smooth trend line (quadratic)
+    geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = TRUE, color = "#377EB8", size = 1) +
     labs(
-      x = x_label, 
-      y = y_label, 
-      color = "Bilingualism",
-      title = plot.title
+      x = x_label,
+      y = y_label,
+      title = plot.title,
+      subtitle = plot.subtitle
     ) +
     ylim(ymin, ymax) +
-    theme_minimal() + 
-    facet_grid(Bilingualism ~ Ethnicity) +
+    theme_minimal() +
+     theme_bw() +
     theme(
-      plot.title = element_text(hjust = 0.5, size = 20, family = "serif", face = "bold"),  
-      axis.title.x = element_text(size = 16, family = "serif"),
-      axis.title.y = element_text(size = 16, family = "serif"), 
-      axis.text.x = element_text(size = 14, family = "serif"),  
-      axis.text.y = element_text(size = 14, family = "serif"),
-          strip.text = element_text(size = 14, family = "serif"),
+      plot.title = element_text(face = "bold", hjust = 0.5, size = 16, family = "serif"),
+      plot.subtitle = element_text(face = "plain", hjust = 0.5, size = 14, family = "serif"),
       legend.position = "top",
-      legend.title = element_text(size = 14,family = "serif"),
-      legend.text = element_text(size = 14,family = "serif")
-    ) +
-    scale_color_manual(values = c("Monolingual" = "#E69F00", "Bilingual" = "#377EB8"))  # custom color palette
+      legend.title = element_text(size = 14, family = "serif"),
+      legend.text = element_text(size = 14, family = "serif"),
+      axis.title.x = element_text(size = 14, family = "serif"),
+      axis.title.y = element_text(size = 14, family = "serif"),
+      axis.text.x = element_text(size = 13, family = "serif"),  
+      axis.text.y = element_text(size = 13, family = "serif"),
+      strip.text = element_text(size = 14, family = "serif")
+    )
 }
 
-plot_spaghetti(
-  HABS_HD_longitudinal, 
-  "Age", 
-  "Executive_Function",
-  "Age",
-  "Executive Function",
-  min(HABS_HD_longitudinal$Executive_Function), 
-  max(HABS_HD_longitudinal$Executive_Function),  
-  color_choice = "darkorange",
-  plot.title = "Executive Function Changes across Visits"
+p51<- plot_spaghetti_collapsed(
+  data = HABS_HD_longitudinal,
+  x_var = "Age",
+  y_var = "Executive_Function",
+  x_label = "Age",
+  y_label = "ExecutiveFunction",
+  ymin = min(HABS_HD_longitudinal$Executive_Function, na.rm = TRUE),
+  ymax = max(HABS_HD_longitudinal$Executive_Function, na.rm = TRUE),
+  plot.title = "Executive Function Changes Across Age",
+  plot.subtitle = "Dotted lines: individual trajectories; Blue line: quadratic trend"
+)
+```
+
+
+
+```{r}
+# 1. Create A0_group and filter dA <= 6
+HABS_HD_longitudinal <- HABS_HD_longitudinal %>%
+  mutate(A0_group = ifelse(A0 <= median(A0, na.rm = TRUE), "Young", "Old"),
+         A0_group = factor(A0_group, levels = c("Young", "Old"))) %>%
+  filter(dA <= 6)
+
+# 2. Fit model including A0_group
+m2 <- lmer(
+  Executive_Function ~ A0_group * dA * Bilingualism * Gender * Ethnicity +
+    Practice + EducationYears + (1|Med_ID),
+  data = HABS_HD_longitudinal
 )
 
-ggsave("Executive_Function_longitudinal.png", plot = p5, 
-       width = 12, height = 6, units = "in", 
-       dpi = 800) 
+# 3. Generate predictions (collapse across gender, include A0_group for prediction)
+pred <- emmeans(
+  m2,
+  ~ dA * Bilingualism | Ethnicity * A0_group,
+  at = list(
+    dA = seq(min(HABS_HD_longitudinal$dA), max(HABS_HD_longitudinal$dA), length.out = 50),
+    Practice = mean(HABS_HD_longitudinal$Practice, na.rm = TRUE),
+    EducationYears = mean(HABS_HD_longitudinal$EducationYears, na.rm = TRUE),
+    Gender = "Female"  # reference level
+  )
+)
+
+pred_df <- as.data.frame(pred)
+pred_df$Ethnicity <- factor(pred_df$Ethnicity,
+                                        levels = c("Hispanic", "Black", "White"))
+HABS_HD_longitudinal$Ethnicity <- factor(HABS_HD_longitudinal$Ethnicity,
+                                        levels = c("Hispanic", "Black", "White"))
+# 4. Plot
+p52<-ggplot() +
+  # Raw participant data
+  geom_line(data = HABS_HD_longitudinal,
+            aes(x = dA, y = Executive_Function, group = Med_ID),
+            color = "orange", linetype = "dotted", alpha = 0.4) +
+  geom_point(data = HABS_HD_longitudinal,
+             aes(x = dA, y = Executive_Function),
+             color = "orange", alpha = 0.4, size = 1.2) +
+  
+  # Model predictions: colored by Bilingualism, linetype = A0_group
+  geom_line(data = pred_df,
+            aes(x = dA, y = emmean, color = Bilingualism, linetype = A0_group),
+            size = 1.2) +
+  
+  # Confidence ribbons
+  geom_ribbon(data = pred_df,
+              aes(x = dA, ymin = lower.CL, ymax = upper.CL,
+                  fill = Bilingualism, group = interaction(Bilingualism, A0_group)),
+              alpha = 0.15, inherit.aes = FALSE) +
+  
+  # Labels
+  labs(
+    x = "Time Differences between Visits (dA)",
+    y = "Executive Function (adjusted)",
+    title = "Executive Function Trajectories by Bilingualism, Ethnicity and Baseline Age",
+    subtitle = "Orange dots: individual raw data; Solid lines: model predictions"
+  ) +
+  
+  # Color/fill
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1") +
+  
+  # Facet by Ethnicity
+  facet_wrap(~Ethnicity) +
+  
+  # Theme
+  theme_minimal() +
+   theme_bw() +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 16, family = "serif"),
+    plot.subtitle = element_text(face = "plain", hjust = 0.5, size = 14, family = "serif"),
+    legend.position = "top",
+    legend.title = element_text(size = 14, family = "serif"),
+    legend.text = element_text(size = 14, family = "serif"),
+    axis.title.x = element_text(size = 14, family = "serif"),
+    axis.title.y = element_text(size = 14, family = "serif"),
+    axis.text.x = element_text(size = 13, family = "serif"),  
+    axis.text.y = element_text(size = 13, family = "serif"),
+    strip.text = element_text(size = 14, family = "serif")
+  )
+
+combined_plot <- ggarrange(
+  p51, p52,
+  ncol = 1, nrow = 2,
+  labels = c("A", "B"),      # optional panel labels
+  #common.legend = False,      
+  legend = "top"              # legend position
+)
+
+ggsave(
+  "Executive_Function_longitudinal_combined.png",
+  plot = combined_plot,
+  width = 11,
+  height = 16,
+  dpi = 800
+)
+# ggsave("Executive_Function_longitudinal2.png", plot = p51, 
+#        width = 11, height = 6, units = "in", 
+#        dpi = 800) 
 ```
+
+
 
 
 ### 2.2.2 Analysis on Cognitive Performance: Long-term Memory (Episodic_Memory)
 
 ```{r}
 a2<-lmer(Episodic_Memory ~  A0 * dA * Bilingualism  * Gender  * Ethnicity + EducationYears + Practice + (1|Med_ID), data = HABS_HD_longitudinal)
+test(emtrends(a2, ~ Bilingualism , var = "dA"))
 car::Anova(a2) 
 effectsize(a2)
 eta_squared(a2)
@@ -1032,54 +1157,138 @@ dA:Bilingualism is significant, indicating bilingual protective effect
 
 Plot for Episodic_Memory Performance
 ```{r}
-plot_spaghetti <- function(data, x_var, y_var, x_label, y_label, ymin, ymax, color_choice, plot.title) {
-  ggplot(data, aes(x = .data[[x_var]], y = .data[[y_var]], color = Bilingualism)) +
-    geom_point(size = 2, stroke = 1, alpha = 0.1, color = color_choice) +
-    geom_line(aes(group = Med_ID), lty = 2, alpha = 0.2, color = "black") +
-    geom_smooth(method = "lm", se = FALSE, size = 0.5, lty = 1, aes(group = Med_ID)) +
-    geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, color = "black", linewidth = 1, lty = 1) +
+plot_spaghetti_collapsed <- function(data, x_var, y_var, x_label, y_label, ymin, ymax, plot.title, plot.subtitle = NULL) {
+  ggplot(data, aes(x = .data[[x_var]], y = .data[[y_var]])) +
+    # raw points
+    geom_point(alpha = 0.3, size = 2, color = "darkorange") +
+    # raw trajectories per participant
+    geom_line(aes(group = Med_ID), linetype = "dotted", alpha = 0.2, color = "#377EB8") +
+    # smooth trend line (quadratic)
+    geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = TRUE, color = "#377EB8", size = 1) +
     labs(
-      x = x_label, 
-      y = y_label, 
-      color = "Bilingualism",
-      title = plot.title
+      x = x_label,
+      y = y_label,
+      title = plot.title,
+      subtitle = plot.subtitle
     ) +
     ylim(ymin, ymax) +
-    theme_minimal() + 
-    facet_wrap(~ Bilingualism) +
+    theme_minimal() +
+     theme_bw() +
     theme(
-      plot.title = element_text(hjust = 0.5, size = 20, family = "serif", face = "bold"),  
-      axis.title.x = element_text(size = 16, family = "serif"),
-      axis.title.y = element_text(size = 16, family = "serif"), 
-      axis.text.x = element_text(size = 14, family = "serif"),  
-      axis.text.y = element_text(size = 14, family = "serif"),  
-      strip.text = element_text(size = 14, family = "serif"),
+      plot.title = element_text(face = "bold", hjust = 0.5, size = 16, family = "serif"),
+      plot.subtitle = element_text(face = "plain", hjust = 0.5, size = 14, family = "serif"),
       legend.position = "top",
-      legend.title = element_text(size = 14,family = "serif"),
-      legend.text = element_text(size = 14,family = "serif")
-    ) +
-    scale_color_manual(values = c("Monolingual" = "#E69F00", "Bilingual" = "#377EB8"))  # custom color palette
+      legend.title = element_text(size = 14, family = "serif"),
+      legend.text = element_text(size = 14, family = "serif"),
+      axis.title.x = element_text(size = 14, family = "serif"),
+      axis.title.y = element_text(size = 14, family = "serif"),
+      axis.text.x = element_text(size = 13, family = "serif"),  
+      axis.text.y = element_text(size = 13, family = "serif"),
+      strip.text = element_text(size = 14, family = "serif")
+    )
 }
 
-plot_spaghetti(
-  HABS_HD_longitudinal, 
-  "Age", 
-  "Episodic_Memory",
-  "Age",
-  "Episodic Memory",
-  min(HABS_HD_longitudinal$Executive_Function), 
-  max(HABS_HD_longitudinal$Executive_Function),  
-  color_choice = "darkorange",
-  plot.title = "Episodic Memory Changes across Visits"
+p61 <- plot_spaghetti_collapsed(
+  data = HABS_HD_longitudinal,
+  x_var = "Age",
+  y_var = "Episodic_Memory",
+  x_label = "Age",
+  y_label = "Episodic Memory",
+  ymin = min(HABS_HD_longitudinal$Episodic_Memory, na.rm = TRUE),
+  ymax = max(HABS_HD_longitudinal$Episodic_Memory, na.rm = TRUE),
+  plot.title = "Episodic Memory Changes Across Age",
+  plot.subtitle = "Dotted lines: individual trajectories; Blue line: quadratic trend"
 )
-
-ggsave("Episodic_Memory_longitudinal.png", plot = p6, 
-       width = 8, height = 6, units = "in", 
-       dpi = 800) 
-
+p61
 
 ```
+
+
+
 Bilingualism was associated with a slower decline in episodic memory over time.
+```{r}
+# 1. Fit the model
+m1 <- lmer(Episodic_Memory ~ A0 * dA * Ethnicity * Gender * Bilingualism +
+             Practice + EducationYears + (1|Med_ID),
+           data = HABS_HD_longitudinal)
+
+# 2. Filter raw data for dA <= 6
+raw_data_filtered <- HABS_HD_longitudinal %>% 
+  filter(dA <= 6)
+
+# 3. Get adjusted predictions for dA × Bilingualism, limiting dA to <= 6
+pred <- emmeans(m1, ~ dA * Bilingualism,
+                at = list(dA = seq(min(raw_data_filtered$dA),
+                                   max(raw_data_filtered$dA),
+                                   length.out = 50)))
+pred_df <- as.data.frame(pred)
+
+# 4. Plot
+p62<-ggplot() +
+  # Raw participant trajectories
+  geom_line(data = raw_data_filtered,
+            aes(x = dA, y = Episodic_Memory, group = Med_ID),
+            color = "orange", linetype = "dotted", alpha = 0.5) +
+  geom_point(data = raw_data_filtered,
+             aes(x = dA, y = Episodic_Memory),
+             color = "orange", alpha = 0.5, size = 1.5) +
+  # Model-predicted lines
+  geom_line(data = pred_df,
+            aes(x = dA, y = emmean, color = Bilingualism),
+            size = 1.2) +
+  # Confidence ribbons
+  geom_ribbon(data = pred_df,
+              aes(x = dA, ymin = lower.CL, ymax = upper.CL, fill = Bilingualism),
+              alpha = 0.2, inherit.aes = FALSE) +
+  # Labels
+  labs(
+    x = "Time Differences between Visits (dA)",
+    y = "Episodic Memory (adjusted)",
+    title = "Episodic Memory Trajectories by Bilingualism",
+    subtitle = "Orange dots: individual raw data; Solid lines: model predictions"
+  ) +
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1") +
+  theme_minimal() +
+   theme_bw() +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 16, family = "serif"),
+    plot.subtitle = element_text(face = "plain", hjust = 0.5, size = 14, family = "serif"),
+    legend.position = "top",
+    legend.title = element_text(size = 14, family = "serif"),
+    legend.text = element_text(size = 14, family = "serif"),
+    axis.title.x = element_text(size = 14, family = "serif"),
+    axis.title.y = element_text(size = 14, family = "serif"),
+    axis.text.x = element_text(size = 13, family = "serif"),  
+    axis.text.y = element_text(size = 13, family = "serif"),
+    strip.text = element_text(size = 14, family = "serif")
+  )
+
+combined_plot <- ggarrange(
+  p61, p62,
+  ncol = 1, nrow = 2,
+  labels = c("A", "B"),      # optional panel labels
+  #common.legend = False,      
+  legend = "top"              # legend position
+)
+
+ggsave(
+  "Episodic_Memory_longitudinal_combined.png",
+  plot = combined_plot,
+  width = 11,
+  height = 16,
+  dpi = 800
+)
+
+
+ggsave("Episodic_Memory_longitudinal2.png", plot = p61, 
+       width = 10, height = 6, units = "in", 
+       dpi = 800) 
+```
+
+
+
+
 
 
 
